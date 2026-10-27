@@ -8,4 +8,7 @@ node_modules
 /.claude
 /.agents
 /.windsurf
+.postman/
+postman/
+
 skills-lock.json
