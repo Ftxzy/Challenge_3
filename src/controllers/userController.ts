@@ -4,25 +4,30 @@ import prisma from "../config/prisma";
 import { HttpError } from "../utils/http-error";
 import { parseId } from "../utils/parse";
 import { sendSuccess } from "../utils/response";
+import { assertValid, checkEmail, checkName, checkPassword } from "../utils/validate";
 
 export const createUser = async (req: Request, res: Response) => {
   // Express 5: req.body = undefined jika body tidak ter-parse, jadi beri fallback {}
   const { email, name, password } = req.body ?? {};
 
-  if (!email || !password) {
-    throw new HttpError(400, "Email dan password wajib diisi");
-  }
+  // Challenge no 6: validasi format email, panjang password, dan name
+  assertValid(checkEmail(email), checkPassword(password), checkName(name));
 
-  const existingUser = await prisma.user.findUnique({ where: { email } });
+  // Rapikan input: email huruf kecil tanpa spasi
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = typeof name === "string" ? name.trim() : undefined;
+
+  const existingUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
+
   if (existingUser) {
     throw new HttpError(409, "Email sudah terdaftar");
   }
 
   const user = await prisma.user.create({
     data: {
-      email,
-      name,
-      password: await bcrypt.hash(password, 10), // jangan pernah simpan password polos
+      email: cleanEmail,
+      name: cleanName,
+      password: await bcrypt.hash(password, 10),// jangan pernah simpan password polos
     },
     select: { id: true, email: true, name: true, createdAt: true },
   });
@@ -69,12 +74,18 @@ export const updateUser = async (req: Request, res: Response) => {
   const id = parseId(req.params.id);
   const { email, name } = req.body ?? {};
 
+    // Challenge no 6: pada update, field opsional, hanya divalidasi jika dikirim
+  if (email === undefined && name === undefined) {
+    throw new HttpError(400, "Kirim minimal salah satu field: email atau name");
+  }
+  assertValid(email !== undefined ? checkEmail(email) : null, checkName(name));
+
   // Jika id tidak ada, Prisma melempar error P2025 -> ditangani errorHandler (404)
   const user = await prisma.user.update({
     where: { id },
     data: {
-      ...(email && { email }),
-      ...(name && { name }),
+      ...(email && { email: email.trim().toLowerCase() }),
+      ...(name && { name: name.trim() }),
     },
     select: { id: true, email: true, name: true, updatedAt: true },
   });
